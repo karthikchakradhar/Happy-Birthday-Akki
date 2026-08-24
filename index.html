@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Journal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at 50% 30%, #5b6480 0%, #3a415a 65%, #2a3044 100%);
+      color: #ffffff;
+      touch-action: manipulation;
+    }
+
+    /* 3D Scene Viewport */
+    #stage-container {
+      perspective: 3200px;
+      perspective-origin: 50% 45%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      flex-grow: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Ambient Soft Ground Shadows */
+    .book-ambient-shadow {
+      position: absolute;
+      bottom: 8%;
+      width: 70vw;
+      max-width: 480px;
+      height: 35px;
+      background: radial-gradient(ellipse at center, rgba(12, 16, 28, 0.75) 0%, rgba(12, 16, 28, 0.3) 50%, transparent 80%);
+      filter: blur(14px);
+      pointer-events: none;
+      transform: translateY(28px) scaleY(0.65);
+      z-index: 1;
+    }
+
+    .directional-drop-shadow {
+      position: absolute;
+      top: 15%;
+      right: 10%;
+      width: 45vw;
+      max-width: 320px;
+      height: 60%;
+      background: linear-gradient(135deg, rgba(10, 14, 26, 0.45) 0%, transparent 70%);
+      filter: blur(24px);
+      pointer-events: none;
+      transform: skewX(-16deg) rotate(6deg);
+      z-index: 0;
+    }
+
+    /* StPageFlip Master Shell with strict clipping boundaries */
+    .st-page-flip {
+      position: relative;
+      z-index: 10;
+      overflow: hidden !important; /* Fixes bottom glitch leak */
+      border-radius: 6px;
+    }
+
+    /* Page Container strict layout */
+    .page-item {
+      background-color: #1a0812;
+      position: relative;
+      overflow: hidden !important;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Book covers: subtle edge rounding, zero yellow tape */
+    .page-item[data-density="hard"]:first-child {
+      border-radius: 2px 14px 14px 2px !important;
+      box-shadow: inset -2px 0 6px rgba(0,0,0,0.18);
+    }
+
+    .page-item[data-density="hard"]:last-child {
+      border-radius: 14px 2px 2px 14px !important;
+    }
+
+    /* Interior page leaf subtle curves */
+    .page-item:nth-child(odd):not([data-density="hard"]) {
+      border-radius: 0 10px 10px 0;
+    }
+    .page-item:nth-child(even):not([data-density="hard"]) {
+      border-radius: 10px 0 0 10px;
+    }
+
+    /* Inner spine shadow depth */
+    .page-item:not([data-density="hard"]):nth-child(even)::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 26px;
+      background: linear-gradient(to left, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.06) 60%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .page-item:not([data-density="hard"]):nth-child(odd)::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 26px;
+      background: linear-gradient(to right, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.06) 60%, transparent 100%);
+      pointer-events: none;
+    }
+
+    /* Canvas styling - forces absolute stretch fitting without leaking below */
+    .page-item canvas {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: fill !important;
+      display: block !important;
+      pointer-events: none;
+    }
+
+    /* Icon Buttons */
+    .paper-icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(45, 52, 73, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #e2e8f0;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+    .paper-icon-btn:active {
+      transform: scale(0.92);
+      background: rgba(70, 80, 110, 0.95);
+    }
+
+    .paper-pill-btn {
+      padding: 10px 16px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #212638;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    }
+    .paper-pill-btn:active {
+      transform: scale(0.94);
+      background: #e2e8f0;
+    }
+  </style>
+</head>
+<body class="flex flex-col justify-between h-screen w-screen px-4 pt-3 pb-6">
+
+  <!-- Top Header -->
+  <header class="w-full flex items-center justify-between z-20 shrink-0 px-1 pt-1">
+    <div class="flex items-center space-x-2">
+      <button class="paper-icon-btn" title="Refresh" onclick="location.reload()">
+        <i data-lucide="layout-grid" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="flex flex-col items-center">
+      <h1 class="text-base font-bold tracking-wide text-white drop-shadow-sm">Journal</h1>
+      <div class="flex items-center space-x-1 text-xs text-slate-300 font-medium">
+        <i data-lucide="edit-3" class="w-3 h-3 text-slate-300"></i>
+        <span id="page-badge">32 Pages</span>
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <button id="btn-sound" class="paper-icon-btn" title="Sound">
+        <i data-lucide="volume-2" class="w-4 h-4" id="sound-icon"></i>
+      </button>
+      <button id="btn-fullscreen" class="paper-icon-btn" title="Fullscreen">
+        <i data-lucide="maximize" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Viewport -->
+  <main id="stage-container">
+    <div class="directional-drop-shadow"></div>
+    <div class="book-ambient-shadow"></div>
+
+    <div id="loading-state" class="flex flex-col items-center space-y-3 z-30">
+      <div class="relative w-12 h-12">
+        <div class="absolute inset-0 rounded-full border-3 border-slate-600/40"></div>
+        <div class="absolute inset-0 rounded-full border-3 border-rose-400 border-t-transparent animate-spin"></div>
+      </div>
+      <p id="loading-text" class="text-xs text-slate-200 font-medium tracking-wide">Opening Journal...</p>
+    </div>
+
+    <div id="book" class="hidden"></div>
+  </main>
+
+  <!-- Bottom Floating Pill Controls -->
+  <footer class="w-full flex items-center justify-center z-20 shrink-0">
+    <div class="flex items-center space-x-3 bg-[#242b3e]/85 backdrop-blur-2xl p-1.5 px-3 rounded-full border border-white/10 shadow-2xl">
+      <button id="btn-prev" class="paper-pill-btn" title="Previous">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </button>
+
+      <div class="px-3 text-xs font-semibold text-slate-200 tracking-wider min-w-[70px] text-center">
+        <span id="spread-title">Cover</span>
+      </div>
+
+      <button id="btn-next" class="paper-pill-btn" title="Next">
+        <i data-lucide="arrow-right" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    const PDF_URL = './magazine.pdf';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pageFlipInstance = null;
+    let pdfDoc = null;
+    let soundEnabled = true;
+
+    function playPaperSound() {
+      if (!soundEnabled) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const bufferSize = audioCtx.sampleRate * 0.09;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.28));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1300;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.24, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.09);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    const loadingState = document.getElementById('loading-state');
+    const loadingText = document.getElementById('loading-text');
+    const bookContainer = document.getElementById('book');
+    const spreadTitleEl = document.getElementById('spread-title');
+    const pageBadgeEl = document.getElementById('page-badge');
+
+    async function loadMagazine() {
+      try {
+        loadingText.innerText = 'Downloading journal...';
+        pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
+        const numPages = pdfDoc.numPages;
+        pageBadgeEl.innerText = `${numPages} Pages`;
+
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          loadingText.innerText = `Loading spread ${pageNum} of ${numPages}...`;
+
+          const page = await pdfDoc.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const pageDiv = document.createElement('div');
+          pageDiv.className = 'page-item';
+          
+          if (pageNum === 1 || pageNum === numPages) {
+            pageDiv.setAttribute('data-density', 'hard');
+          }
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+          pageDiv.appendChild(canvas);
+          bookContainer.appendChild(pageDiv);
+        }
+
+        loadingText.innerText = 'Creating 3D Journal...';
+
+        setTimeout(() => {
+          initPaperBook(numPages);
+        }, 150);
+
+      } catch (err) {
+        console.error(err);
+        loadingText.innerText = 'Please ensure magazine.pdf is present in your GitHub repo.';
+      }
+    }
+
+    function updateSpreadTitle(index, total) {
+      if (index === 0) {
+        spreadTitleEl.innerText = 'Cover';
+      } else if (index >= total - 1) {
+        spreadTitleEl.innerText = 'Back';
+      } else {
+        const left = index;
+        const right = Math.min(index + 1, total);
+        spreadTitleEl.innerText = `${left} - ${right}`;
+      }
+    }
+
+    function initPaperBook(totalPages) {
+      loadingState.classList.add('hidden');
+      bookContainer.classList.remove('hidden');
+
+      const availableW = window.innerWidth - 20;
+      const availableH = window.innerHeight - 180;
+
+      let singleWidth = Math.floor(availableW / 2);
+      let singleHeight = Math.floor(singleWidth * 1.414);
+
+      if (singleHeight > availableH) {
+        singleHeight = Math.floor(availableH);
+        singleWidth = Math.floor(singleHeight / 1.414);
+      }
+
+      singleWidth = Math.max(140, Math.min(singleWidth, 460));
+      singleHeight = Math.floor(singleWidth * 1.414);
+
+      pageFlipInstance = new St.PageFlip(bookContainer, {
+        width: singleWidth,
+        height: singleHeight,
+        size: 'fixed',
+        minWidth: 130,
+        maxWidth: 500,
+        minHeight: 180,
+        maxHeight: 720,
+        maxShadowOpacity: 0.8,
+        showCover: true,
+        usePortrait: false,
+        flippingTime: 700,
+        mobileScrollSupport: false,
+        useMouseEvents: true
+      });
+
+      pageFlipInstance.loadFromHTML(document.querySelectorAll('.page-item'));
+
+      pageFlipInstance.on('flip', (e) => {
+        playPaperSound();
+        updateSpreadTitle(e.data, totalPages);
+      });
+
+      document.getElementById('btn-prev').onclick = () => pageFlipInstance.flipPrev();
+      document.getElementById('btn-next').onclick = () => pageFlipInstance.flipNext();
+
+      document.getElementById('btn-sound').onclick = () => {
+        soundEnabled = !soundEnabled;
+        document.getElementById('sound-icon').setAttribute(
+          'data-lucide',
+          soundEnabled ? 'volume-2' : 'volume-x'
+        );
+        lucide.createIcons();
+      };
+
+      document.getElementById('btn-fullscreen').onclick = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      };
+
+      updateSpreadTitle(0, totalPages);
+      lucide.createIcons();
+    }
+
+    window.onload = loadMagazine;
+    lucide.createIcons();
+  </script>
+</body>
+</html>
