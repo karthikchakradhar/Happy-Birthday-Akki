@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive PDF Flipbook</title>
+  <!-- Tailwind CSS CDN for modern UI controls -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js library for direct in-browser PDF rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PageFlip.js library for 3D page flip physics -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap');
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at 50% 20%, #200b14 0%, #0d0408 100%);
+      color: #fce7f3;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    .serif-title {
+      font-family: 'Cinzel', serif;
+    }
+
+    /* Flipbook container & page styling */
+    #flipbook-wrapper {
+      perspective: 2500px;
+    }
+
+    .st-page-flip {
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(180, 40, 70, 0.15);
+      border-radius: 6px;
+    }
+
+    .page-item {
+      background-color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page-item canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* Shading overlay for realistic depth */
+    .page-item::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 30px;
+      pointer-events: none;
+    }
+
+    .page-item:nth-child(odd)::after {
+      left: 0;
+      background: linear-gradient(to right, rgba(0,0,0,0.18), transparent);
+    }
+
+    .page-item:nth-child(even)::after {
+      right: 0;
+      background: linear-gradient(to left, rgba(0,0,0,0.18), transparent);
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(244, 63, 94, 0.4);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between min-h-screen p-4 md:p-6">
+
+  <!-- Header & Title Bar -->
+  <header class="w-full max-w-6xl flex flex-wrap items-center justify-between gap-4 py-2 border-b border-rose-900/40">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-700 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-950">
+        <i data-lucide="book-open" class="w-5 h-5 text-white"></i>
+      </div>
+      <div>
+        <h1 class="serif-title text-xl md:text-2xl font-bold tracking-wider text-rose-100">Editorial Flipbook</h1>
+        <p class="text-xs text-rose-300/70">Interactive 3D Magazine Viewer</p>
+      </div>
+    </div>
+
+    <!-- PDF Upload Trigger -->
+    <div class="flex items-center gap-3">
+      <label for="pdf-input" class="cursor-pointer flex items-center gap-2 bg-rose-600 hover:bg-rose-500 active:scale-95 transition-all text-white font-medium px-4 py-2 rounded-xl text-sm shadow-lg shadow-rose-900/50">
+        <i data-lucide="upload" class="w-4 h-4"></i>
+        <span>Upload PDF</span>
+      </label>
+      <input type="file" id="pdf-input" accept="application/pdf" class="hidden" />
+    </div>
+  </header>
+
+  <!-- Main Viewport / Book Area -->
+  <main class="w-full flex flex-col items-center justify-center flex-grow my-4">
+    
+    <!-- Upload Dropzone (Visible before upload) -->
+    <div id="drop-zone" class="w-full max-w-2xl border-2 border-dashed border-rose-700/50 hover:border-rose-400 bg-rose-950/20 hover:bg-rose-950/40 rounded-3xl p-10 md:p-14 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center space-y-4">
+      <div class="w-20 h-20 rounded-full bg-rose-900/40 border border-rose-500/30 flex items-center justify-center text-rose-300">
+        <i data-lucide="file-up" class="w-10 h-10"></i>
+      </div>
+      <div>
+        <h2 class="text-xl font-bold text-rose-100 mb-1">Upload your Magazine PDF</h2>
+        <p class="text-sm text-rose-300/60 max-w-md mx-auto">Select or drag & drop your PDF file here. It automatically extracts pages and renders them into an interactive 3D flipbook.</p>
+      </div>
+      <button type="button" onclick="document.getElementById('pdf-input').click()" class="bg-gradient-to-r from-rose-600 to-rose-700 text-white font-semibold px-6 py-2.5 rounded-xl text-sm shadow-md hover:brightness-110">
+        Browse File
+      </button>
+    </div>
+
+    <!-- Loading Bar (Hidden by default) -->
+    <div id="loading-state" class="hidden flex flex-col items-center space-y-4 my-10">
+      <div class="relative w-16 h-16">
+        <div class="absolute inset-0 rounded-full border-4 border-rose-900/40"></div>
+        <div class="absolute inset-0 rounded-full border-4 border-rose-500 border-t-transparent animate-spin"></div>
+      </div>
+      <p id="loading-text" class="text-sm text-rose-300 font-medium">Processing & Rendering pages...</p>
+      <div class="w-64 h-2 bg-rose-950 rounded-full overflow-hidden border border-rose-800/40">
+        <div id="progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-200" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Flipbook Stage (Hidden until rendered) -->
+    <div id="flipbook-wrapper" class="hidden flex flex-col items-center justify-center w-full max-w-6xl">
+      <div id="book" class="mx-auto my-2"></div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Interactive Control Bar -->
+  <footer id="control-bar" class="hidden w-full max-w-3xl bg-neutral-900/80 backdrop-blur-xl border border-rose-900/50 rounded-2xl px-6 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-4">
+    <!-- Prev / Next Navigation -->
+    <div class="flex items-center space-x-2">
+      <button id="btn-prev" class="p-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="chevron-left" class="w-5 h-5"></i>
+      </button>
+      <button id="btn-next" class="p-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="chevron-right" class="w-5 h-5"></i>
+      </button>
+      <span id="page-indicator" class="text-xs font-semibold text-rose-300 ml-2 tracking-wide">
+        Page <span id="current-page">1</span> of <span id="total-pages">0</span>
+      </span>
+    </div>
+
+    <!-- Page Slider / Fast Jumper -->
+    <div class="flex items-center space-x-3 flex-grow max-w-xs">
+      <input id="page-slider" type="range" min="1" max="1" value="1" class="w-full accent-rose-500 cursor-pointer h-1.5 bg-rose-950 rounded-lg">
+    </div>
+
+    <!-- Sound & Fullscreen Controls -->
+    <div class="flex items-center space-x-2">
+      <button id="btn-sound" title="Toggle Page Sound" class="p-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="volume-2" class="w-4 h-4" id="sound-icon"></i>
+      </button>
+      <button id="btn-fullscreen" title="Fullscreen" class="p-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="maximize" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pageFlipInstance = null;
+    let pdfDoc = null;
+    let soundEnabled = true;
+
+    // Simple synthesized page-turn sound using Web Audio API
+    function playTurnSound() {
+      if (!soundEnabled) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const bufferSize = audioCtx.sampleRate * 0.08;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1200;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+      } catch (e) {
+        console.warn('Audio not supported', e);
+      }
+    }
+
+    const fileInput = document.getElementById('pdf-input');
+    const dropZone = document.getElementById('drop-zone');
+    const loadingState = document.getElementById('loading-state');
+    const loadingText = document.getElementById('loading-text');
+    const progressBar = document.getElementById('progress-bar');
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    const bookContainer = document.getElementById('book');
+    const controlBar = document.getElementById('control-bar');
+    const currentPageEl = document.getElementById('current-page');
+    const totalPagesEl = document.getElementById('total-pages');
+    const pageSlider = document.getElementById('page-slider');
+
+    // Drag and drop handlers
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-rose-400', 'bg-rose-950/40');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-rose-400', 'bg-rose-950/40');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-rose-400', 'bg-rose-950/40');
+      if (e.dataTransfer.files.length > 0 && e.dataTransfer.files[0].type === 'application/pdf') {
+        loadPdf(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        loadPdf(e.target.files[0]);
+      }
+    });
+
+    async function loadPdf(file) {
+      dropZone.classList.add('hidden');
+      loadingState.classList.remove('hidden');
+      progressBar.style.width = '10%';
+      loadingText.innerText = 'Loading PDF document...';
+
+      const fileReader = new FileReader();
+      fileReader.onload = async function () {
+        const typedArray = new Uint8Array(this.result);
+        try {
+          pdfDoc = await pdfjsLib.getDocument({ data: typedArray }).promise;
+          const numPages = pdfDoc.numPages;
+          totalPagesEl.innerText = numPages;
+          pageSlider.max = numPages;
+
+          // Clear previous instance if any
+          bookContainer.innerHTML = '';
+          if (pageFlipInstance) {
+            pageFlipInstance.destroy();
+          }
+
+          // Render all pages to canvases
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            loadingText.innerText = `Rendering page ${pageNum} of ${numPages}...`;
+            progressBar.style.width = `${Math.round((pageNum / numPages) * 80) + 10}%`;
+
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+
+            const pageDiv = document.createElement('div');
+            pageDiv.className = 'page-item shadow-inner';
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            pageDiv.appendChild(canvas);
+            bookContainer.appendChild(pageDiv);
+          }
+
+          loadingText.innerText = 'Building 3D Flipbook...';
+          progressBar.style.width = '100%';
+
+          setTimeout(() => {
+            initFlipBook();
+          }, 300);
+
+        } catch (error) {
+          console.error('Error rendering PDF:', error);
+          alert('Could not render PDF. Please ensure it is a valid PDF document.');
+          loadingState.classList.add('hidden');
+          dropZone.classList.remove('hidden');
+        }
+      };
+      fileReader.readAsArrayBuffer(file);
+    }
+
+    function initFlipBook() {
+      loadingState.classList.add('hidden');
+      flipbookWrapper.classList.remove('hidden');
+      controlBar.classList.remove('hidden');
+
+      // Determine optimal flipbook size based on screen
+      const isMobile = window.innerWidth < 768;
+      const pageWidth = isMobile ? Math.min(window.innerWidth - 30, 420) : 460;
+      const pageHeight = isMobile ? pageWidth * 1.414 : 650;
+
+      pageFlipInstance = new St.PageFlip(bookContainer, {
+        width: pageWidth,
+        height: pageHeight,
+        size: 'stretch',
+        minWidth: 320,
+        maxWidth: 550,
+        minHeight: 450,
+        maxHeight: 780,
+        drawShadow: true,
+        flippingTime: 700,
+        usePortrait: isMobile,
+        startZIndex: 0,
+        autoSize: true,
+        showCover: true
+      });
+
+      pageFlipInstance.loadFromHTML(document.querySelectorAll('.page-item'));
+
+      // Event listeners for page turns
+      pageFlipInstance.on('flip', (e) => {
+        playTurnSound();
+        const current = e.data + 1;
+        currentPageEl.innerText = current;
+        pageSlider.value = current;
+      });
+
+      // Navigation button triggers
+      document.getElementById('btn-prev').onclick = () => pageFlipInstance.flipPrev();
+      document.getElementById('btn-next').onclick = () => pageFlipInstance.flipNext();
+
+      pageSlider.oninput = (e) => {
+        const targetPage = parseInt(e.target.value) - 1;
+        pageFlipInstance.flip(targetPage);
+      };
+
+      // Sound button toggle
+      document.getElementById('btn-sound').onclick = () => {
+        soundEnabled = !soundEnabled;
+        document.getElementById('sound-icon').setAttribute(
+          'data-lucide',
+          soundEnabled ? 'volume-2' : 'volume-x'
+        );
+        lucide.createIcons();
+      };
+
+      // Fullscreen toggle
+      document.getElementById('btn-fullscreen').onclick = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      };
+
+      lucide.createIcons();
+    }
+
+    // Initialize initial icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>
