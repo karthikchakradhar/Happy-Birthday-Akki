@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AKSHAYA - Her Era Starts Here</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at 50% 20%, #200812 0%, #0a0105 100%);
+      color: #fce7f3;
+      touch-action: manipulation;
+    }
+
+    .serif-title { font-family: 'Cinzel', serif; }
+
+    /* Flipbook container fixes */
+    #flipbook-wrapper {
+      perspective: 3000px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      flex-grow: 1;
+      overflow: hidden;
+      position: relative;
+      padding: 4px;
+    }
+
+    /* Prevent bottom canvas ghosting/glitch */
+    .page-item {
+      background-color: #11050a;
+      position: relative;
+      overflow: hidden;
+      display: none; /* PageFlip manages active page visibility cleanly */
+    }
+
+    .page-item canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: contain;
+      display: block;
+      vertical-align: middle;
+    }
+
+    .st-page-flip {
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.95), 0 0 35px rgba(225, 29, 72, 0.2);
+      border-radius: 4px;
+      margin: 0 auto;
+      overflow: visible !important;
+    }
+
+    /* Page Spine & Shadow Depth */
+    .page-item[data-density="hard"] {
+      background-color: #0d0307;
+    }
+
+    .page-item:not([data-density="hard"]):nth-child(even)::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 28px;
+      background: linear-gradient(to left, rgba(0,0,0,0.2), transparent);
+      pointer-events: none;
+    }
+
+    .page-item:not([data-density="hard"]):nth-child(odd)::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 28px;
+      background: linear-gradient(to right, rgba(0,0,0,0.2), transparent);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="flex flex-col justify-between h-screen w-screen p-2 md:p-4 select-none">
+
+  <!-- Compact Header -->
+  <header class="w-full max-w-4xl flex items-center justify-between py-1 px-2 border-b border-rose-900/30 shrink-0">
+    <div class="flex items-center space-x-2">
+      <div class="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gradient-to-tr from-rose-700 to-amber-500 flex items-center justify-center shadow-md shadow-rose-950">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
+      </div>
+      <div>
+        <h1 class="serif-title text-sm md:text-base font-bold tracking-widest text-rose-100">AKSHAYA</h1>
+      </div>
+    </div>
+    <div class="text-[10px] md:text-xs text-rose-300/80 bg-rose-950/60 px-2.5 py-0.5 rounded-full border border-rose-800/40">
+      22nd Edition &bull; Aug 23, 2026
+    </div>
+  </header>
+
+  <!-- Main Viewport Area with auto-fit scale -->
+  <main class="w-full flex-grow flex items-center justify-center overflow-hidden relative my-1">
+    
+    <!-- Loading Screen -->
+    <div id="loading-state" class="flex flex-col items-center space-y-3 z-20">
+      <div class="relative w-12 h-12">
+        <div class="absolute inset-0 rounded-full border-3 border-rose-900/40"></div>
+        <div class="absolute inset-0 rounded-full border-3 border-rose-500 border-t-transparent animate-spin"></div>
+      </div>
+      <p id="loading-text" class="text-xs text-rose-300 font-medium tracking-wide">Opening Akshaya's Magazine...</p>
+      <div class="w-48 h-1.5 bg-rose-950 rounded-full overflow-hidden border border-rose-800/40">
+        <div id="progress-bar" class="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all duration-200" style="width: 10%"></div>
+      </div>
+    </div>
+
+    <!-- Flipbook Wrapper -->
+    <div id="flipbook-wrapper" class="hidden">
+      <div id="book"></div>
+    </div>
+
+  </main>
+
+  <!-- Sleek Bottom Bar (Fitted for iPhone & Realme screens) -->
+  <footer id="control-bar" class="hidden w-full max-w-xl mx-auto bg-neutral-900/90 backdrop-blur-xl border border-rose-900/40 rounded-2xl px-3 py-1.5 shadow-2xl flex items-center justify-between gap-2 shrink-0 mb-1">
+    <!-- Prev / Next Controls -->
+    <div class="flex items-center space-x-1">
+      <button id="btn-prev" aria-label="Previous Spread" class="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      </button>
+      <button id="btn-next" aria-label="Next Spread" class="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+      </button>
+      <span class="text-[11px] font-semibold text-rose-200 ml-1 whitespace-nowrap">
+        <span id="current-spread">Cover</span>
+      </span>
+    </div>
+
+    <!-- Page Slider Jumper -->
+    <div class="flex items-center space-x-2 flex-grow max-w-[140px] md:max-w-xs">
+      <input id="page-slider" type="range" min="0" max="31" value="0" class="w-full accent-rose-500 cursor-pointer h-1 bg-rose-950 rounded-lg">
+    </div>
+
+    <!-- Audio & Fullscreen -->
+    <div class="flex items-center space-x-1">
+      <button id="btn-sound" title="Toggle Sound" class="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="volume-2" class="w-3.5 h-3.5" id="sound-icon"></i>
+      </button>
+      <button id="btn-fullscreen" title="Fullscreen" class="p-2 rounded-xl bg-rose-950/70 hover:bg-rose-800 text-rose-200 hover:text-white transition active:scale-95">
+        <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    const PDF_URL = './magazine.pdf';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pageFlipInstance = null;
+    let pdfDoc = null;
+    let soundEnabled = true;
+
+    function playTurnSound() {
+      if (!soundEnabled) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const bufferSize = audioCtx.sampleRate * 0.08;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1200;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    const loadingState = document.getElementById('loading-state');
+    const loadingText = document.getElementById('loading-text');
+    const progressBar = document.getElementById('progress-bar');
+    const flipbookWrapper = document.getElementById('flipbook-wrapper');
+    const bookContainer = document.getElementById('book');
+    const controlBar = document.getElementById('control-bar');
+    const currentSpreadEl = document.getElementById('current-spread');
+    const pageSlider = document.getElementById('page-slider');
+
+    async function loadMagazine() {
+      try {
+        loadingText.innerText = 'Downloading magazine...';
+        pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
+        const numPages = pdfDoc.numPages;
+        pageSlider.max = numPages - 1;
+
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          loadingText.innerText = `Rendering page ${pageNum} of ${numPages}...`;
+          progressBar.style.width = `${Math.round((pageNum / numPages) * 85) + 10}%`;
+
+          const page = await pdfDoc.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const pageDiv = document.createElement('div');
+          pageDiv.className = 'page-item';
+          
+          if (pageNum === 1 || pageNum === numPages) {
+            pageDiv.setAttribute('data-density', 'hard');
+          }
+
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+          pageDiv.appendChild(canvas);
+          bookContainer.appendChild(pageDiv);
+        }
+
+        loadingText.innerText = 'Fitting to screen...';
+        progressBar.style.width = '100%';
+
+        setTimeout(() => {
+          initBookSpreads(numPages);
+        }, 200);
+
+      } catch (err) {
+        console.error(err);
+        loadingText.innerText = 'Error loading magazine.pdf. Ensure magazine.pdf is present in the repository.';
+      }
+    }
+
+    function updateLabel(index, total) {
+      if (index === 0) {
+        currentSpreadEl.innerText = 'Cover';
+      } else if (index >= total - 1) {
+        currentSpreadEl.innerText = 'Back';
+      } else {
+        const left = index;
+        const right = Math.min(index + 1, total);
+        currentSpreadEl.innerText = `P. ${left}-${right}`;
+      }
+      pageSlider.value = index;
+    }
+
+    function initBookSpreads(totalPages) {
+      loadingState.classList.add('hidden');
+      flipbookWrapper.classList.remove('hidden');
+      controlBar.classList.remove('hidden');
+
+      // Calculate viewport constraints to guarantee full fit on iPhone 11 & Realme 10 Pro
+      const availableW = window.innerWidth - 16;
+      const availableH = window.innerHeight - 110; // Reserve room for header and bottom dock
+      const isMobile = window.innerWidth < 768;
+
+      // Single page dimensions calculated from double-page width limit vs height limit
+      let singleWidth = Math.floor(availableW / 2);
+      let singleHeight = Math.floor(singleWidth * 1.414);
+
+      if (singleHeight > availableH) {
+        singleHeight = Math.floor(availableH);
+        singleWidth = Math.floor(singleHeight / 1.414);
+      }
+
+      // Safety bounds
+      singleWidth = Math.max(160, Math.min(singleWidth, 520));
+      singleHeight = Math.floor(singleWidth * 1.414);
+
+      pageFlipInstance = new St.PageFlip(bookContainer, {
+        width: singleWidth,
+        height: singleHeight,
+        size: 'fixed',
+        minWidth: 150,
+        maxWidth: 550,
+        minHeight: 220,
+        maxHeight: 780,
+        maxShadowOpacity: 0.6,
+        showCover: true,
+        usePortrait: false,
+        flippingTime: 650,
+        mobileScrollSupport: false,
+        useMouseEvents: true
+      });
+
+      pageFlipInstance.loadFromHTML(document.querySelectorAll('.page-item'));
+
+      pageFlipInstance.on('flip', (e) => {
+        playTurnSound();
+        updateLabel(e.data, totalPages);
+      });
+
+      document.getElementById('btn-prev').onclick = () => pageFlipInstance.flipPrev();
+      document.getElementById('btn-next').onclick = () => pageFlipInstance.flipNext();
+
+      pageSlider.oninput = (e) => {
+        const target = parseInt(e.target.value);
+        pageFlipInstance.flip(target);
+      };
+
+      document.getElementById('btn-sound').onclick = () => {
+        soundEnabled = !soundEnabled;
+        document.getElementById('sound-icon').setAttribute(
+          'data-lucide',
+          soundEnabled ? 'volume-2' : 'volume-x'
+        );
+        lucide.createIcons();
+      };
+
+      document.getElementById('btn-fullscreen').onclick = () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      };
+
+      updateLabel(0, totalPages);
+      lucide.createIcons();
+    }
+
+    window.onload = loadMagazine;
+    lucide.createIcons();
+  </script>
+</body>
+</html>
